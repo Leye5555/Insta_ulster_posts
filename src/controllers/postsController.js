@@ -9,6 +9,10 @@ const fs = require("node:fs");
 
 const { default: axios } = require("axios");
 const API_URL = process.env.API_URL_USER || "http://localhost:8000";
+const API_URL_COMMENTS =
+  process.env.API_URL_COMMENTS || "http://localhost:8002";
+const API_URL_LIKES = process.env.API_URL_LIKES || "http://localhost:8003";
+
 const getUser = async ({ id, token }) => {
   if (!token) {
     throw new Error("No token");
@@ -17,8 +21,22 @@ const getUser = async ({ id, token }) => {
   const user = await axios.get(`${API_URL}/v1/users/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  console.log(user.data);
+
   return user.data;
+};
+
+const getComments = async (id, token) => {
+  const comments = await axios.get(`${API_URL_COMMENTS}/v1/comments/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return comments.data;
+};
+
+const getLikes = async (id, token) => {
+  const likes = await axios.get(`${API_URL_LIKES}/v1/likes/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return likes.data;
 };
 exports.getPosts = async (req, res) => {
   try {
@@ -26,16 +44,16 @@ exports.getPosts = async (req, res) => {
     const mappedPosts = await Promise.all(
       posts.map(async (post) => {
         const user = await getUser({ id: post.userId, token: req.token });
-        return { ...post._doc, user };
+        const comments = await getComments(post._id, req.token);
+        const likes = await getLikes(post._id, req.token);
+        return { ...post._doc, user, ...comments, ...likes };
       })
     );
 
-    res
-      .status(200)
-      .json({
-        posts: mappedPosts.reverse(),
-        sas_token: getAzureBlobSAS()?.toString(),
-      });
+    res.status(200).json({
+      posts: mappedPosts.reverse(),
+      sas_token: getAzureBlobSAS()?.toString(),
+    });
   } catch (err) {
     console.log(err);
     res.status(400).json({ error: err.message });
@@ -118,6 +136,11 @@ exports.getPost = async (req, res) => {
       id: post.userId,
       token: req.token,
     });
+    const comments = await getComments(post._id, req.token);
+    const likes = await getLikes(post._id, req.token);
+    post.comments = comments;
+    post.likes = likes;
+
     res.status(200).json({
       post: {
         ...post.toJSON(),
@@ -133,14 +156,16 @@ exports.getPost = async (req, res) => {
 exports.updatePost = async (req, res) => {
   try {
     const postId = req.params.id;
-    const user = await Post.findOneAndUpdate(
+    const post = await Post.findOneAndUpdate(
       { _id: postId, userId: req.user.userId },
       req.body,
       {
         new: true,
       }
     );
-    res.status(200).json({ user });
+    const comments = await getComments(post?._id, req.token);
+    post.comments = comments;
+    res.status(200).json({ post });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -175,6 +200,47 @@ exports.verifyAzureBlobSAS = async (req, res) => {
     const { sas_token } = req.body;
     const isValid = await verifySasToken(sas_token);
     res.status(200).json({ isValid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+exports.getPostsLikedByUser = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // use the posts collection
+    const posts = await Post.find({});
+
+    const mappedPosts1 = [];
+
+    // use a for loop for the filter
+    for (let i = 0; i < posts.length; i++) {
+      const post = posts[i];
+      const likes = await getLikes(post._id, req.token);
+      if (likes?.likes?.length === 0) {
+        continue;
+      }
+      if (likes?.likes?.some((like) => like.userId === userId)) {
+        mappedPosts1.push(post);
+      }
+    }
+
+    console.log({ mappedPosts1: mappedPosts1.length });
+    const mappedPosts2 = await Promise.all(
+      mappedPosts1.map(async (post) => {
+        const user = await getUser({ id: post.userId, token: req.token });
+        const comments = await getComments(post._id, req.token);
+        const likes = await getLikes(post._id, req.token);
+        return { ...post._doc, user, ...comments, ...likes };
+      })
+    );
+    console.log({ mappedPosts2: mappedPosts2.length });
+
+    res.status(200).json({
+      posts: mappedPosts2.reverse(),
+      sas_token: getAzureBlobSAS()?.toString(),
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

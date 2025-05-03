@@ -8,6 +8,7 @@ const {
   updatePost,
   getAzureBlobSAS,
   verifyAzureBlobSAS,
+  getPostsLikedByUser,
 } = require("../controllers/postsController");
 
 const auth = require("../middlewares/auth");
@@ -671,5 +672,70 @@ router.get("/sas-token", auth, getAzureBlobSAS);
  */
 
 router.post("/sas-token", auth, verifyAzureBlobSAS);
+
+/**
+ * @openapi
+ * /v1/posts/liked:
+ *   get:
+ *     summary: Get posts liked by user
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Post deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 posts:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       content:
+ *                         type: string
+ *                       post_image:
+ *                         type: string
+ *                       tags:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                       createdAt:
+ *                         type: string
+ *                       updatedAt:
+ *                         type: string
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   description: Error message
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   description: Error message
+ */
+
+router.get("/posts-liked", auth, getPostsLikedByUser);
 
 module.exports = router;
